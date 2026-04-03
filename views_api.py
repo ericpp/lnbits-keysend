@@ -259,14 +259,24 @@ async def api_received_payments(
         wallet_ids = user.wallet_ids if user else []
 
     payments = await get_received_keysend_payments(wallet_ids, limit, offset)
-    return [
-        {
+
+    results = []
+    for p in payments:
+        custom_records = p.extra.get("custom_records", {})
+        entry_id = p.extra.get("keysend_entry", "")
+
+        if not custom_records and entry_id:
+            entry = await get_keysend_entry(entry_id)
+            if entry:
+                custom_records = {entry.custom_key: entry.custom_value}
+
+        results.append({
             "payment_hash": p.payment_hash,
             "amount": p.sat,
             "memo": p.memo,
             "time": p.time.isoformat() if p.time else None,
-            "keysend_entry": p.extra.get("keysend_entry", ""),
-            "custom_records": p.extra.get("custom_records", {}),
-        }
-        for p in payments
-    ]
+            "keysend_entry": entry_id,
+            "custom_records": custom_records,
+        })
+
+    return results
