@@ -208,7 +208,7 @@ async def _process_keysend_invoice(inv: dict) -> None:
             await mark_payment_processed(payment_hash)
             return
 
-        await credit_wallet(payment_hash, amount_sat, entry)
+        await credit_wallet(payment_hash, amount_sat, entry, custom_records)
         await mark_payment_processed(payment_hash)
         await send_webhook(payment_hash, amount_sat, entry)
         return
@@ -216,7 +216,12 @@ async def _process_keysend_invoice(inv: dict) -> None:
     await mark_payment_processed(payment_hash)
 
 
-async def credit_wallet(payment_hash: str, amount_sat: int, entry: KeysendEntry):
+async def credit_wallet(
+    payment_hash: str,
+    amount_sat: int,
+    entry: KeysendEntry,
+    custom_records: dict[str, str] | None = None,
+):
     try:
         payment = await create_invoice(
             wallet_id=entry.wallet,
@@ -228,6 +233,7 @@ async def credit_wallet(payment_hash: str, amount_sat: int, entry: KeysendEntry)
                 "keysend_routed": True,
                 "keysend_entry": entry.id,
                 "original_payment": payment_hash,
+                "custom_records": custom_records or {},
             },
         )
 

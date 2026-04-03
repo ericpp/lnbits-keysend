@@ -266,6 +266,7 @@ async def api_received_payments(
             "memo": p.memo,
             "time": p.time.isoformat() if p.time else None,
             "keysend_entry": p.extra.get("keysend_entry", ""),
+            "custom_records": p.extra.get("custom_records", {}),
         }
         for p in payments
     ]

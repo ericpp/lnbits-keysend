@@ -100,6 +100,10 @@ window.PageKeysend = {
         show: false,
         data: null
       },
+      paymentDetailDialog: {
+        show: false,
+        data: null
+      },
       sendDialog: {
         show: false,
         data: {
@@ -148,6 +152,10 @@ window.PageKeysend = {
           })
         })
         .catch(LNbits.utils.notifyApiError)
+    },
+    openPaymentDetail(payment) {
+      this.paymentDetailDialog.data = payment
+      this.paymentDetailDialog.show = true
     },
     closeFormDialog() {
       this.resetFormData()

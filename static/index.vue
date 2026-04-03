@@ -133,7 +133,11 @@
                   </q-tr>
                 </template>
                 <template v-slot:body="props">
-                  <q-tr :props="props">
+                  <q-tr
+                    :props="props"
+                    class="cursor-pointer"
+                    @click="openPaymentDetail(props.row)"
+                  >
                     <q-td
                       v-for="col in props.cols"
                       :key="col.name"
@@ -522,6 +526,87 @@
             ><q-tooltip>Copy well-known URL</q-tooltip>
           </q-btn>
           <q-btn v-close-popup flat color="grey" class="q-ml-auto">Close</q-btn>
+        </div>
+      </q-card>
+    </q-dialog>
+
+    <!-- Payment detail dialog -->
+    <q-dialog v-model="paymentDetailDialog.show" position="top">
+      <q-card
+        v-if="paymentDetailDialog.data"
+        class="q-pa-lg lnbits__dialog-card"
+      >
+        <h6 class="text-subtitle1 q-my-none q-mb-md">Received Payment</h6>
+
+        <div style="word-break: break-all" class="q-mb-md">
+          <strong>Date:</strong>
+          <span v-text="paymentDetailDialog.data.time"></span><br />
+          <strong>Amount:</strong>
+          <span v-text="paymentDetailDialog.data.amount + ' sats'"></span
+          ><br />
+          <strong>Memo:</strong>
+          <span
+            v-text="paymentDetailDialog.data.memo || '(none)'"
+          ></span
+          ><br />
+          <strong>Address:</strong>
+          <span v-text="paymentDetailDialog.data.keysend_entry"></span
+          ><br />
+          <strong>Payment Hash:</strong>
+          <span
+            class="text-caption"
+            v-text="paymentDetailDialog.data.payment_hash"
+          ></span>
+        </div>
+
+        <div
+          v-if="
+            paymentDetailDialog.data.custom_records &&
+            Object.keys(paymentDetailDialog.data.custom_records).length
+          "
+        >
+          <strong>TLV Custom Records:</strong>
+          <q-markup-table flat dense bordered class="q-mt-sm">
+            <thead>
+              <tr>
+                <th class="text-left">Type</th>
+                <th class="text-left">Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(val, key) in paymentDetailDialog.data.custom_records"
+                :key="key"
+              >
+                <td
+                  class="text-caption"
+                  v-text="key"
+                ></td>
+                <td
+                  style="word-break: break-all"
+                  v-text="val"
+                ></td>
+              </tr>
+            </tbody>
+          </q-markup-table>
+        </div>
+
+        <div class="row q-mt-lg">
+          <q-btn
+            outline
+            color="grey"
+            icon="content_copy"
+            label="Copy Hash"
+            @click="
+              utils.copyText(
+                paymentDetailDialog.data.payment_hash,
+                'Payment hash copied!'
+              )
+            "
+          ></q-btn>
+          <q-btn v-close-popup flat color="grey" class="q-ml-auto"
+            >Close</q-btn
+          >
         </div>
       </q-card>
     </q-dialog>
