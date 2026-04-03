@@ -27,7 +27,7 @@ async def keysend_wellknown(username: str) -> KeysendWellKnownResponse:
     if not entry:
         raise HTTPException(
             status_code=HTTPStatus.NOT_FOUND,
-            detail="Keysend entry not found.",
+            detail="Keysend address not found.",
         )
 
     pubkey = await get_node_pubkey()

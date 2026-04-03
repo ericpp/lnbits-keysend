@@ -91,11 +91,11 @@ async def credit_wallet(payment: Payment, entry: KeysendEntry):
 
         logger.info(
             f"Credited {amount_sats} sats to wallet {entry.wallet} "
-            f"for keysend entry {entry.id}"
+            f"for keysend address {entry.id}"
         )
 
     except Exception as exc:
-        logger.error(f"Failed to credit wallet for keysend entry {entry.id}: {exc}")
+        logger.error(f"Failed to credit wallet for keysend address {entry.id}: {exc}")
 
 
 async def mark_payment_routed(checking_id: str, entry_id: str) -> None:

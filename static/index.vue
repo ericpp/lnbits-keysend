@@ -4,7 +4,7 @@
       <q-card>
         <q-card-section>
           <q-btn unelevated color="primary" @click="formDialog.show = true"
-            >New keysend entry</q-btn
+            >New keysend address</q-btn
           >
           <q-btn
             unelevated
@@ -18,78 +18,138 @@
 
       <q-card>
         <q-card-section>
-          <div class="row items-center no-wrap q-mb-md">
-            <div class="col">
-              <h5 class="text-subtitle1 q-my-none">Keysend entries</h5>
-            </div>
-          </div>
-          <q-table
+          <q-tabs
+            v-model="activeTab"
             dense
-            flat
-            :rows="entries"
-            :columns="entriesTable.columns"
-            row-key="id"
-            v-model:pagination="entriesTable.pagination"
+            class="text-grey"
+            active-color="primary"
+            indicator-color="primary"
+            align="left"
+            narrow-indicator
           >
-            <template v-slot:header="props">
-              <q-tr class="text-left" :props="props">
-                <q-th auto-width></q-th>
-                <q-th v-for="col in props.cols" :key="col.name" :props="props">
-                  <span v-text="col.label"></span>
-                </q-th>
-                <q-th auto-width></q-th>
-              </q-tr>
-            </template>
-            <template v-slot:body="props">
-              <q-tr :props="props">
-                <q-td auto-width>
-                  <q-btn
-                    dense
-                    size="xs"
-                    icon="visibility"
-                    :color="$q.dark.isActive ? 'grey-7' : 'grey-5'"
-                    class="q-ml-sm"
-                    @click="openDetailDialog(props.row.id)"
-                    ><q-tooltip>View Details</q-tooltip></q-btn
-                  >
-                  <q-btn
-                    flat
-                    dense
-                    size="xs"
-                    @click="openUpdateDialog(props.row.id)"
-                    icon="edit"
-                    color="light-blue"
-                    class="q-ml-sm"
-                  >
-                    <q-tooltip>Edit</q-tooltip>
-                  </q-btn>
-                  <q-btn
-                    flat
-                    dense
-                    size="xs"
-                    @click="deleteEntry(props.row.id)"
-                    icon="cancel"
-                    color="pink"
-                    class="q-ml-sm"
-                    ><q-tooltip>Delete</q-tooltip></q-btn
-                  >
-                </q-td>
-                <q-td
-                  v-for="col in props.cols"
-                  :key="col.name"
-                  :props="props"
-                  v-text="col.value"
-                ></q-td>
-                <q-td>
-                  <q-icon v-if="props.row.webhook_url" size="14px" name="http">
-                    <q-tooltip
-                      >Webhook to <span v-text="props.row.webhook_url"></span
-                    ></q-tooltip>
-                  </q-icon>
-                </q-td>
-              </q-tr>
-            </template>
-          </q-table>
+            <q-tab name="addresses" label="Addresses"></q-tab>
+            <q-tab name="payments" label="Received Payments"></q-tab>
+          </q-tabs>
+          <q-separator></q-separator>
+
+          <q-tab-panels v-model="activeTab" animated>
+            <q-tab-panel name="addresses">
+              <q-table
+                dense
+                flat
+                :rows="entries"
+                :columns="entriesTable.columns"
+                row-key="id"
+                v-model:pagination="entriesTable.pagination"
+              >
+                <template v-slot:header="props">
+                  <q-tr class="text-left" :props="props">
+                    <q-th auto-width></q-th>
+                    <q-th
+                      v-for="col in props.cols"
+                      :key="col.name"
+                      :props="props"
+                    >
+                      <span v-text="col.label"></span>
+                    </q-th>
+                    <q-th auto-width></q-th>
+                  </q-tr>
+                </template>
+                <template v-slot:body="props">
+                  <q-tr :props="props">
+                    <q-td auto-width>
+                      <q-btn
+                        dense
+                        size="xs"
+                        icon="visibility"
+                        :color="$q.dark.isActive ? 'grey-7' : 'grey-5'"
+                        class="q-ml-sm"
+                        @click="openDetailDialog(props.row.id)"
+                        ><q-tooltip>View Details</q-tooltip></q-btn
+                      >
+                      <q-btn
+                        flat
+                        dense
+                        size="xs"
+                        @click="openUpdateDialog(props.row.id)"
+                        icon="edit"
+                        color="light-blue"
+                        class="q-ml-sm"
+                      >
+                        <q-tooltip>Edit</q-tooltip>
+                      </q-btn>
+                      <q-btn
+                        flat
+                        dense
+                        size="xs"
+                        @click="deleteEntry(props.row.id)"
+                        icon="cancel"
+                        color="pink"
+                        class="q-ml-sm"
+                        ><q-tooltip>Delete</q-tooltip></q-btn
+                      >
+                    </q-td>
+                    <q-td
+                      v-for="col in props.cols"
+                      :key="col.name"
+                      :props="props"
+                      v-text="col.value"
+                    ></q-td>
+                    <q-td>
+                      <q-icon
+                        v-if="props.row.webhook_url"
+                        size="14px"
+                        name="http"
+                      >
+                        <q-tooltip
+                          >Webhook to
+                          <span v-text="props.row.webhook_url"></span
+                        ></q-tooltip>
+                      </q-icon>
+                    </q-td>
+                  </q-tr>
+                </template>
+              </q-table>
+            </q-tab-panel>
+
+            <q-tab-panel name="payments">
+              <q-table
+                dense
+                flat
+                :rows="receivedPayments"
+                :columns="receivedTable.columns"
+                row-key="payment_hash"
+                v-model:pagination="receivedTable.pagination"
+              >
+                <template v-slot:header="props">
+                  <q-tr class="text-left" :props="props">
+                    <q-th
+                      v-for="col in props.cols"
+                      :key="col.name"
+                      :props="props"
+                    >
+                      <span v-text="col.label"></span>
+                    </q-th>
+                  </q-tr>
+                </template>
+                <template v-slot:body="props">
+                  <q-tr :props="props">
+                    <q-td
+                      v-for="col in props.cols"
+                      :key="col.name"
+                      :props="props"
+                      v-text="col.value"
+                    ></q-td>
+                  </q-tr>
+                </template>
+                <template v-slot:no-data>
+                  <div class="full-width row flex-center text-grey q-gutter-sm">
+                    <span>No keysend payments received yet.</span>
+                  </div>
+                </template>
+              </q-table>
+            </q-tab-panel>
+          </q-tab-panels>
         </q-card-section>
       </q-card>
     </div>
@@ -118,7 +178,7 @@
                 group="api"
                 dense
                 expand-separator
-                label="List keysend entries"
+                label="List keysend addresses"
               >
                 <q-card>
                   <q-card-section>
@@ -131,7 +191,7 @@
                     <h5 class="text-caption q-mt-sm q-mb-none">
                       Returns 200 OK (application/json)
                     </h5>
-                    <code>[&lt;keysend_entry_object&gt;, ...]</code>
+                    <code>[&lt;keysend_address_object&gt;, ...]</code>
                     <h5 class="text-caption q-mt-sm q-mb-none">Curl example</h5>
                     <code
                       >curl -X GET <span v-text="baseUrl"></span> -H "X-Api-Key:
@@ -144,7 +204,7 @@
                 group="api"
                 dense
                 expand-separator
-                label="Create a keysend entry"
+                label="Create a keysend address"
               >
                 <q-card>
                   <q-card-section>
@@ -165,11 +225,11 @@
                     <h5 class="text-caption q-mt-sm q-mb-none">
                       Returns 201 CREATED (application/json)
                     </h5>
-                    <code>&lt;keysend_entry_object&gt;</code>
+                    <code>&lt;keysend_address_object&gt;</code>
                     <h5 class="text-caption q-mt-sm q-mb-none">Curl example</h5>
                     <code
                       >curl -X POST <span v-text="baseUrl"></span> -d
-                      '{"description": "my entry", "username": "alice",
+                      '{"description": "my address", "username": "alice",
                       "custom_key": "696969", "custom_value": "55"}' -H
                       "Content-type: application/json" -H "X-Api-Key:
                       <span v-text="g.user.wallets[0].adminkey"></span>"
@@ -221,7 +281,7 @@
                 group="api"
                 dense
                 expand-separator
-                label="Delete a keysend entry"
+                label="Delete a keysend address"
                 class="q-pb-md"
               >
                 <q-card>
@@ -364,7 +424,7 @@
                       v-model="formDialog.data.webhook_url"
                       type="text"
                       label="Webhook URL (optional)"
-                      hint="URL called when this entry receives a keysend payment."
+                      hint="URL called when this address receives a keysend payment."
                     ></q-input>
                   </div>
                 </div>
@@ -399,7 +459,7 @@
               unelevated
               color="primary"
               type="submit"
-              >Update entry</q-btn
+              >Update address</q-btn
             >
             <q-btn
               v-else
@@ -412,7 +472,7 @@
                 !formDialog.data.custom_value
               "
               type="submit"
-              >Create entry</q-btn
+              >Create address</q-btn
             >
             <q-btn v-close-popup flat color="grey" class="q-ml-auto"
               >Cancel</q-btn

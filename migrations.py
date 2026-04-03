@@ -3,7 +3,7 @@ from lnbits.db import Connection
 
 async def m001_initial(db: Connection):
     """
-    Initial keysend tables: entries and settings.
+    Initial keysend table: addresses.
     """
     await db.execute(f"""
         CREATE TABLE keysend.entries (
@@ -18,6 +18,7 @@ async def m001_initial(db: Connection):
             webhook_headers TEXT,
             webhook_body TEXT,
             created_at TIMESTAMP DEFAULT {db.timestamp_column_default},
-            updated_at TIMESTAMP DEFAULT {db.timestamp_column_default}
+            updated_at TIMESTAMP DEFAULT {db.timestamp_column_default},
+            UNIQUE(custom_key, custom_value)
         );
     """)

@@ -16,6 +16,8 @@ from .crud import (
     get_keysend_entry,
     get_keysend_entry_by_username,
     get_keysend_entries,
+    get_keysend_entry_by_custom_data,
+    get_received_keysend_payments,
     update_keysend_entry,
 )
 from .models import (
@@ -29,7 +31,7 @@ keysend_api_router = APIRouter()
 
 
 # ---------------------------------------------------------------------------
-# Entries CRUD
+# Addresses CRUD
 # ---------------------------------------------------------------------------
 
 
@@ -52,7 +54,7 @@ async def api_entry_retrieve(
     entry = await get_keysend_entry(entry_id)
     if not entry:
         raise HTTPException(
-            detail="Keysend entry does not exist.",
+            detail="Keysend address does not exist.",
             status_code=HTTPStatus.NOT_FOUND,
         )
 
@@ -61,7 +63,7 @@ async def api_entry_retrieve(
     admin_user = user.admin if user else False
     if not admin_user and entry_wallet and entry_wallet.user != key_info.wallet.user:
         raise HTTPException(
-            detail="Not your keysend entry.",
+            detail="Not your keysend address.",
             status_code=HTTPStatus.FORBIDDEN,
         )
     return entry
@@ -74,7 +76,7 @@ async def api_entry_public_retrieve(entry_id: str) -> KeysendEntry:
     entry = await get_keysend_entry(entry_id)
     if not entry:
         raise HTTPException(
-            detail="Keysend entry does not exist.",
+            detail="Keysend address does not exist.",
             status_code=HTTPStatus.NOT_FOUND,
         )
     return entry
@@ -85,6 +87,15 @@ async def _check_username_exists(username: str) -> None:
     if prev:
         raise HTTPException(
             detail="Username already taken.",
+            status_code=HTTPStatus.CONFLICT,
+        )
+
+
+async def _check_custom_data_exists(custom_key: str, custom_value: str, entry_id: str | None = None) -> None:
+    prev = await get_keysend_entry_by_custom_data(custom_key, custom_value)
+    if prev and prev.id != entry_id:
+        raise HTTPException(
+            detail=f"The custom key '{custom_key}' and value '{custom_value}' combination is already in use.",
             status_code=HTTPStatus.CONFLICT,
         )
 
@@ -132,6 +143,8 @@ async def api_entry_create_or_update(
             status_code=HTTPStatus.BAD_REQUEST,
         )
 
+    await _check_custom_data_exists(data.custom_key, data.custom_value, entry_id)
+
     if not data.wallet:
         data.wallet = key_info.wallet.id
 
@@ -145,14 +158,14 @@ async def api_entry_create_or_update(
     admin_user = user.admin if user else False
     if not admin_user and new_wallet.user != key_info.wallet.user:
         raise HTTPException(
-            detail="Not your keysend entry.", status_code=HTTPStatus.FORBIDDEN
+            detail="Not your keysend address.", status_code=HTTPStatus.FORBIDDEN
         )
 
     if entry_id:
         entry = await get_keysend_entry(entry_id)
         if not entry:
             raise HTTPException(
-                detail="Keysend entry does not exist.",
+                detail="Keysend address does not exist.",
                 status_code=HTTPStatus.NOT_FOUND,
             )
         if data.username and data.username != entry.username:
@@ -175,7 +188,7 @@ async def api_entry_delete(
     entry = await get_keysend_entry(entry_id)
     if not entry:
         raise HTTPException(
-            detail="Keysend entry does not exist.",
+            detail="Keysend address does not exist.",
             status_code=HTTPStatus.NOT_FOUND,
         )
 
@@ -183,11 +196,11 @@ async def api_entry_delete(
     admin_user = user.admin if user else False
     if not admin_user and entry.wallet != key_info.wallet.id:
         raise HTTPException(
-            detail="Not your keysend entry.", status_code=HTTPStatus.FORBIDDEN
+            detail="Not your keysend address.", status_code=HTTPStatus.FORBIDDEN
         )
 
     await delete_keysend_entry(entry_id)
-    return SimpleStatus(success=True, message="Deleted keysend entry.")
+    return SimpleStatus(success=True, message="Deleted keysend address.")
 
 
 # ---------------------------------------------------------------------------
@@ -236,3 +249,33 @@ async def api_send_keysend(
         "payment_hash": payment.payment_hash if hasattr(payment, "payment_hash") else str(payment),
         "status": "ok",
     }
+
+
+# ---------------------------------------------------------------------------
+# Received payments
+# ---------------------------------------------------------------------------
+
+
+@keysend_api_router.get("/api/v1/payments", status_code=HTTPStatus.OK)
+async def api_received_payments(
+    key_info: WalletTypeInfo = Depends(require_invoice_key),
+    all_wallets: bool = Query(False),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> list[dict]:
+    wallet_ids = [key_info.wallet.id]
+    if all_wallets:
+        user = await get_user(key_info.wallet.user)
+        wallet_ids = user.wallet_ids if user else []
+
+    payments = await get_received_keysend_payments(wallet_ids, limit, offset)
+    return [
+        {
+            "payment_hash": p.payment_hash,
+            "amount": p.sat,
+            "memo": p.memo,
+            "time": p.time.isoformat() if p.time else None,
+            "keysend_entry": p.extra.get("keysend_entry", ""),
+        }
+        for p in payments
+    ]

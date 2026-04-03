@@ -8,6 +8,7 @@ window.PageKeysend = {
   data() {
     return {
       domain: window.location.host,
+      activeTab: 'addresses',
       entries: [],
       entriesTable: {
         columns: [
@@ -44,6 +45,47 @@ window.PageKeysend = {
             label: 'Custom Value',
             align: 'left',
             field: 'custom_value'
+          }
+        ],
+        pagination: {
+          rowsPerPage: 10
+        }
+      },
+      receivedPayments: [],
+      receivedTable: {
+        columns: [
+          {
+            name: 'time',
+            label: 'Date',
+            align: 'left',
+            field: 'time',
+            sortable: true
+          },
+          {
+            name: 'amount',
+            label: 'Amount (sats)',
+            align: 'right',
+            field: 'amount',
+            sortable: true
+          },
+          {
+            name: 'memo',
+            label: 'Memo',
+            align: 'left',
+            field: 'memo'
+          },
+          {
+            name: 'keysend_entry',
+            label: 'Address',
+            align: 'left',
+            field: 'keysend_entry'
+          },
+          {
+            name: 'payment_hash',
+            label: 'Payment Hash',
+            align: 'left',
+            field: 'payment_hash',
+            format: val => (val ? val.substring(0, 12) + '…' : '')
           }
         ],
         pagination: {
@@ -89,6 +131,21 @@ window.PageKeysend = {
         )
         .then(response => {
           this.entries = response.data.map(this.mapEntry)
+        })
+        .catch(LNbits.utils.notifyApiError)
+    },
+    getReceivedPayments() {
+      LNbits.api
+        .request(
+          'GET',
+          '/keysend/api/v1/payments?all_wallets=true',
+          this.g.user.wallets[0].inkey
+        )
+        .then(response => {
+          this.receivedPayments = response.data.map(p => {
+            p.time = LNbits.utils.formatDate(p.time)
+            return p
+          })
         })
         .catch(LNbits.utils.notifyApiError)
     },
@@ -159,7 +216,7 @@ window.PageKeysend = {
     deleteEntry(entryId) {
       var entry = _.findWhere(this.entries, {id: entryId})
       LNbits.utils
-        .confirmDialog('Are you sure you want to delete this keysend entry?')
+        .confirmDialog('Are you sure you want to delete this keysend address?')
         .onOk(() => {
           LNbits.api
             .request(
@@ -215,6 +272,7 @@ window.PageKeysend = {
   created() {
     if (this.g.user.wallets?.length) {
       this.getEntries()
+      this.getReceivedPayments()
     }
   }
 }

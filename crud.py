@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from lnbits.core.db import db as core_db
+from lnbits.core.models import Payment
 from lnbits.db import Database
 from lnbits.helpers import urlsafe_short_hash
 
@@ -9,7 +11,7 @@ db = Database("ext_keysend")
 
 
 # ---------------------------------------------------------------------------
-# Keysend entries
+# Keysend addresses
 # ---------------------------------------------------------------------------
 
 
@@ -83,4 +85,30 @@ async def update_keysend_entry(entry: KeysendEntry) -> KeysendEntry:
 async def delete_keysend_entry(entry_id: str) -> None:
     await db.execute(
         "DELETE FROM keysend.entries WHERE id = :id", {"id": entry_id}
+    )
+
+
+# ---------------------------------------------------------------------------
+# Received payments
+# ---------------------------------------------------------------------------
+
+
+async def get_received_keysend_payments(
+    wallet_ids: list[str],
+    limit: int = 50,
+    offset: int = 0,
+) -> list[Payment]:
+    q = ",".join([f"'{w}'" for w in wallet_ids])
+    return await core_db.fetchall(
+        f"""
+        SELECT * FROM apipayments
+        WHERE wallet_id IN ({q})
+          AND tag = :tag
+          AND amount > 0
+          AND status = :status
+        ORDER BY time DESC
+        LIMIT {int(limit)} OFFSET {int(offset)}
+        """,
+        {"tag": "keysend", "status": "success"},
+        Payment,
     )
