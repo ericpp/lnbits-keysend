@@ -1,0 +1,8 @@
+[
+  {
+    "path": "/keysend/",
+    "name": "PageKeysend",
+    "template": "/keysend/static/index.vue",
+    "component": "/keysend/static/index.js"
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "id": "keysend",
+  "version": "0.1.0",
+  "name": "Keysend",
+  "repo": "",
+  "short_description": "Send and receive keysend payments with customKey/customValue TLV routing",
+  "description": "",
+  "tile": "/keysend/static/image/keysend.png",
+  "min_lnbits_version": "1.4.0",
+  "contributors": [],
+  "images": [],
+  "description_md": "",
+  "terms_and_conditions_md": "",
+  "license": "MIT",
+  "paid_features": "",
+  "tags": ["Payments", "Keysend", "Podcasting"],
+  "donate": "",
+  "hidden": false
+}
