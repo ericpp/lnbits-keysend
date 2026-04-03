@@ -1,50 +1,194 @@
 import asyncio
+import base64
 import json
 
 import httpx
-from lnbits.core.crud import get_payment, update_payment
-from lnbits.core.models import Payment
 from lnbits.core.services import create_invoice
-from lnbits.tasks import register_invoice_listener
+from lnbits.settings import settings
+from lnbits.wallets import get_funding_source
 from loguru import logger
 
-from .crud import get_keysend_entry_by_custom_data
+from .crud import (
+    get_keysend_entry_by_custom_data,
+    is_payment_processed,
+    mark_payment_processed,
+)
+from .helpers import KEYSEND_PREIMAGE_TLV, get_recent_keysend_invoices
 from .models import KeysendEntry
 
 
-async def wait_for_paid_invoices():
-    invoice_queue: asyncio.Queue = asyncio.Queue()
-    register_invoice_listener(invoice_queue, "ext_keysend")
+async def watch_keysend_payments():
+    """
+    Watch for incoming keysend payments. On startup, does a one-time
+    catch-up poll to process any payments that arrived while offline,
+    then subscribes to the node's real-time invoice stream.
+    """
+    await asyncio.sleep(3)
 
-    while True:
-        payment = await invoice_queue.get()
-        await on_invoice_paid(payment)
+    logger.info("Keysend: running catch-up poll")
+    try:
+        invoices = await get_recent_keysend_invoices(limit=100)
+        for inv in invoices:
+            await _process_keysend_invoice(inv)
+    except Exception as exc:
+        logger.error(f"Keysend catch-up poll error: {exc}")
+
+    wallet = get_funding_source()
+    wallet_cls = type(wallet).__name__
+
+    if wallet_cls in ("LndRestWallet", "LndWallet"):
+        await _stream_lnd(wallet)
+    elif wallet_cls in ("CoreLightningWallet", "CoreLightningRestWallet", "CLNRestWallet"):
+        await _stream_cln(wallet)
+    else:
+        logger.warning(
+            f"Keysend: {wallet_cls} does not support streaming, "
+            "falling back to polling"
+        )
+        await _poll_fallback()
 
 
-async def on_invoice_paid(payment: Payment):
-    if not payment.extra:
-        return
+async def _stream_lnd(wallet):
+    """
+    Subscribe to LND's /v1/invoices/subscribe streaming endpoint.
+    Same pattern as LNBits's own paid_invoices_stream, but we extract
+    the full invoice data including custom TLV records from htlcs.
+    """
+    while settings.lnbits_running:
+        try:
+            url = f"{wallet.endpoint}/v1/invoices/subscribe"
+            logger.info("Keysend: subscribing to LND invoice stream")
+            async with wallet.client.stream("GET", url, timeout=None) as r:
+                async for line in r.aiter_lines():
+                    try:
+                        inv = json.loads(line)["result"]
+                    except Exception:
+                        continue
 
-    # Already processed by this extension
-    if payment.extra.get("keysend_routed"):
-        return
+                    if not inv.get("settled"):
+                        continue
 
-    # Look for custom TLV records in the payment extra data.
-    # Funding sources typically store keysend TLV records under
-    # "custom_records" or "extra" in the payment extra dict.
-    custom_records = payment.extra.get("custom_records", {})
-    if not custom_records and payment.extra.get("tag") == "keysend":
-        custom_records = payment.extra
+                    keysend_inv = _parse_lnd_invoice(inv)
+                    if keysend_inv:
+                        await _process_keysend_invoice(keysend_inv)
+
+        except Exception as exc:
+            logger.warning(
+                f"Keysend: lost connection to LND invoice stream: "
+                f"'{exc}', retrying in 5 seconds"
+            )
+            await asyncio.sleep(5)
+
+
+def _parse_lnd_invoice(inv: dict) -> dict | None:
+    custom_records: dict[str, str] = {}
+    for htlc in inv.get("htlcs", []):
+        for k, v in htlc.get("custom_records", {}).items():
+            if k == KEYSEND_PREIMAGE_TLV:
+                continue
+            try:
+                custom_records[k] = base64.b64decode(v).decode(
+                    "utf-8", errors="replace"
+                )
+            except Exception:
+                custom_records[k] = v
 
     if not custom_records:
+        return None
+
+    return {
+        "payment_hash": base64.b64decode(inv["r_hash"]).hex(),
+        "amount_sat": int(inv.get("value", 0)),
+        "custom_records": custom_records,
+        "memo": inv.get("memo", ""),
+    }
+
+
+async def _stream_cln(wallet):
+    """
+    CLN doesn't have a long-lived HTTP stream like LND.
+    Use waitanyinvoice via the REST or socket interface,
+    which blocks until the next invoice settles.
+    """
+    last_pay_index = None
+
+    while settings.lnbits_running:
+        try:
+            if hasattr(wallet, "client"):
+                params = {}
+                if last_pay_index is not None:
+                    params["lastpay_index"] = last_pay_index
+                r = await wallet.client.post(
+                    f"{wallet.endpoint}/v1/waitanyinvoice",
+                    json=params,
+                    timeout=None,
+                )
+                r.raise_for_status()
+                inv = r.json()
+            elif hasattr(wallet, "ln"):
+                kwargs = {}
+                if last_pay_index is not None:
+                    kwargs["lastpay_index"] = last_pay_index
+                inv = wallet.ln.waitanyinvoice(**kwargs)
+            else:
+                logger.warning("Keysend: CLN wallet has no usable interface")
+                await _poll_fallback()
+                return
+
+            if inv.get("status") != "paid":
+                continue
+
+            last_pay_index = inv.get("pay_index", last_pay_index)
+
+            extratlvs = inv.get("extratlvs", {})
+            custom_records = {}
+            for k, v in extratlvs.items():
+                if str(k) == KEYSEND_PREIMAGE_TLV:
+                    continue
+                custom_records[str(k)] = str(v)
+
+            if custom_records:
+                await _process_keysend_invoice({
+                    "payment_hash": inv.get("payment_hash", ""),
+                    "amount_sat": inv.get("amount_received_msat", 0) // 1000,
+                    "custom_records": custom_records,
+                    "memo": inv.get("description", ""),
+                })
+
+        except Exception as exc:
+            logger.warning(
+                f"Keysend: CLN waitanyinvoice error: '{exc}', "
+                "retrying in 5 seconds"
+            )
+            await asyncio.sleep(5)
+
+
+async def _poll_fallback():
+    """Fallback for backends that don't support streaming."""
+    logger.info("Keysend: using polling fallback (every 10s)")
+    while settings.lnbits_running:
+        try:
+            invoices = await get_recent_keysend_invoices(limit=50)
+            for inv in invoices:
+                await _process_keysend_invoice(inv)
+        except Exception as exc:
+            logger.error(f"Keysend poll error: {exc}")
+        await asyncio.sleep(10)
+
+
+# ---------------------------------------------------------------------------
+# Invoice processing (shared by all backends)
+# ---------------------------------------------------------------------------
+
+
+async def _process_keysend_invoice(inv: dict) -> None:
+    payment_hash = inv["payment_hash"]
+
+    if await is_payment_processed(payment_hash):
         return
 
-    # Try to match any registered entry by iterating over custom records
+    custom_records = inv.get("custom_records", {})
     for custom_key, custom_value in custom_records.items():
-        if custom_key in ("tag", "keysend_routed", "wh_status", "wh_success",
-                          "wh_message", "wh_response"):
-            continue
-
         entry = await get_keysend_entry_by_custom_data(
             str(custom_key), str(custom_value)
         )
@@ -56,41 +200,36 @@ async def on_invoice_paid(payment: Payment):
             f"-> wallet={entry.wallet} (entry={entry.id})"
         )
 
-        await credit_wallet(payment, entry)
-        await mark_payment_routed(payment.checking_id, entry.id)
-        await send_webhook(payment, entry)
-        return
-
-    logger.debug(
-        f"Keysend payment {payment.payment_hash} has custom records "
-        "but no matching entry found."
-    )
-
-
-async def credit_wallet(payment: Payment, entry: KeysendEntry):
-    """
-    Credit the target wallet by creating an internal invoice and paying it
-    from the admin/source wallet.
-    """
-    try:
-        amount_sats = abs(payment.amount)
-        if amount_sats < 1:
+        amount_sat = inv.get("amount_sat", 0)
+        if amount_sat < 1:
+            logger.warning(f"Keysend {payment_hash}: amount too small ({amount_sat})")
+            await mark_payment_processed(payment_hash)
             return
 
-        invoice = await create_invoice(
+        await credit_wallet(payment_hash, amount_sat, entry)
+        await mark_payment_processed(payment_hash)
+        await send_webhook(payment_hash, amount_sat, entry)
+        return
+
+    await mark_payment_processed(payment_hash)
+
+
+async def credit_wallet(payment_hash: str, amount_sat: int, entry: KeysendEntry):
+    try:
+        await create_invoice(
             wallet_id=entry.wallet,
-            amount=amount_sats,
+            amount=amount_sat,
             memo=f"Keysend: {entry.description}",
             extra={
                 "tag": "keysend",
                 "keysend_routed": True,
                 "keysend_entry": entry.id,
-                "original_payment": payment.payment_hash,
+                "original_payment": payment_hash,
             },
         )
 
         logger.info(
-            f"Credited {amount_sats} sats to wallet {entry.wallet} "
+            f"Credited {amount_sat} sats to wallet {entry.wallet} "
             f"for keysend address {entry.id}"
         )
 
@@ -98,26 +237,17 @@ async def credit_wallet(payment: Payment, entry: KeysendEntry):
         logger.error(f"Failed to credit wallet for keysend address {entry.id}: {exc}")
 
 
-async def mark_payment_routed(checking_id: str, entry_id: str) -> None:
-    payment = await get_payment(checking_id)
-    extra = payment.extra or {}
-    extra["keysend_routed"] = True
-    extra["keysend_entry"] = entry_id
-    payment.extra = extra
-    await update_payment(payment)
-
-
-async def send_webhook(payment: Payment, entry: KeysendEntry):
+async def send_webhook(payment_hash: str, amount_sat: int, entry: KeysendEntry):
     if not entry.webhook_url:
         return
 
     async with httpx.AsyncClient() as client:
         try:
-            r: httpx.Response = await client.post(
+            await client.post(
                 entry.webhook_url,
                 json={
-                    "payment_hash": payment.payment_hash,
-                    "amount": payment.amount,
+                    "payment_hash": payment_hash,
+                    "amount": amount_sat,
                     "keysend_entry": entry.id,
                     "custom_key": entry.custom_key,
                     "custom_value": entry.custom_value,
@@ -134,28 +264,5 @@ async def send_webhook(payment: Payment, entry: KeysendEntry):
                 ),
                 timeout=6,
             )
-            await mark_webhook_sent(
-                payment.checking_id,
-                r.status_code,
-                r.is_success,
-                r.reason_phrase,
-                r.text,
-            )
         except Exception as exc:
             logger.error(f"Keysend webhook error: {exc}")
-            await mark_webhook_sent(
-                payment.checking_id, -1, False, "Unexpected Error", str(exc)
-            )
-
-
-async def mark_webhook_sent(
-    checking_id: str, status: int, is_success: bool, reason_phrase="", text=""
-) -> None:
-    payment = await get_payment(checking_id)
-    extra = payment.extra or {}
-    extra["wh_status"] = status
-    extra["wh_success"] = is_success
-    extra["wh_message"] = reason_phrase
-    extra["wh_response"] = text
-    payment.extra = extra
-    await update_payment(payment)

@@ -22,3 +22,9 @@ async def m001_initial(db: Connection):
             UNIQUE(custom_key, custom_value)
         );
     """)
+
+    await db.execute("""
+        CREATE TABLE keysend.processed (
+            payment_hash TEXT PRIMARY KEY
+        );
+    """)

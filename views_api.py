@@ -224,20 +224,13 @@ async def api_send_keysend(
             status_code=HTTPStatus.BAD_REQUEST,
         )
 
-    from lnbits.core.services import pay_invoice
+    from .helpers import send_keysend
 
-    extra: dict = {}
-    if data.custom_records:
-        extra["custom_records"] = data.custom_records
-
-    # LNbits core pay_invoice with keysend parameters
-    # The funding source needs to support keysend (most do: LND, CLN, etc.)
     try:
-        payment = await pay_invoice(
-            wallet_id=key_info.wallet.id,
+        result = await send_keysend(
             destination=data.destination,
-            amount=data.amount,
-            extra=extra,
+            amount_sat=data.amount,
+            custom_records=data.custom_records,
         )
     except Exception as exc:
         raise HTTPException(
@@ -245,10 +238,7 @@ async def api_send_keysend(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
         ) from exc
 
-    return {
-        "payment_hash": payment.payment_hash if hasattr(payment, "payment_hash") else str(payment),
-        "status": "ok",
-    }
+    return result
 
 
 # ---------------------------------------------------------------------------

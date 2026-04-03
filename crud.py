@@ -89,6 +89,26 @@ async def delete_keysend_entry(entry_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Processed payment tracking
+# ---------------------------------------------------------------------------
+
+
+async def is_payment_processed(payment_hash: str) -> bool:
+    row = await db.fetchone(
+        "SELECT payment_hash FROM keysend.processed WHERE payment_hash = :h",
+        {"h": payment_hash},
+    )
+    return row is not None
+
+
+async def mark_payment_processed(payment_hash: str) -> None:
+    await db.execute(
+        "INSERT INTO keysend.processed (payment_hash) VALUES (:h)",
+        {"h": payment_hash},
+    )
+
+
+# ---------------------------------------------------------------------------
 # Received payments
 # ---------------------------------------------------------------------------
 

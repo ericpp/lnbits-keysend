@@ -3,7 +3,7 @@ import asyncio
 from fastapi import APIRouter
 
 from .crud import db
-from .tasks import wait_for_paid_invoices
+from .tasks import watch_keysend_payments
 from .views import keysend_generic_router
 from .views_api import keysend_api_router
 from .views_keysend import keysend_wellknown_router
@@ -39,7 +39,7 @@ def keysend_stop():
 def keysend_start():
     from lnbits.tasks import create_permanent_unique_task
 
-    task = create_permanent_unique_task("keysend", wait_for_paid_invoices)
+    task = create_permanent_unique_task("keysend", watch_keysend_payments)
     scheduled_tasks.append(task)
 
 
