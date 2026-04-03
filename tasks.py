@@ -3,6 +3,8 @@ import base64
 import json
 
 import httpx
+from lnbits.core.crud import update_payment
+from lnbits.core.models import PaymentState
 from lnbits.core.services import create_invoice
 from lnbits.settings import settings
 from lnbits.wallets import get_funding_source
@@ -216,10 +218,11 @@ async def _process_keysend_invoice(inv: dict) -> None:
 
 async def credit_wallet(payment_hash: str, amount_sat: int, entry: KeysendEntry):
     try:
-        await create_invoice(
+        payment = await create_invoice(
             wallet_id=entry.wallet,
             amount=amount_sat,
             memo=f"Keysend: {entry.description}",
+            internal=True,
             extra={
                 "tag": "keysend",
                 "keysend_routed": True,
@@ -227,6 +230,9 @@ async def credit_wallet(payment_hash: str, amount_sat: int, entry: KeysendEntry)
                 "original_payment": payment_hash,
             },
         )
+
+        payment.status = PaymentState.SUCCESS
+        await update_payment(payment)
 
         logger.info(
             f"Credited {amount_sat} sats to wallet {entry.wallet} "
