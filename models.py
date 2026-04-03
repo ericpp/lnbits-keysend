@@ -4,10 +4,6 @@ from fastapi import Query
 from pydantic import BaseModel, Field
 
 
-class KeysendSettings(BaseModel):
-    node_pubkey: str
-
-
 class CreateKeysendEntryData(BaseModel):
     description: str
     wallet: str | None = None

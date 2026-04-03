@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from lnbits.core.crud import get_user, get_wallet
 from lnbits.core.models import SimpleStatus, WalletTypeInfo
 from lnbits.decorators import (
-    check_admin,
     require_admin_key,
     require_invoice_key,
 )
@@ -14,18 +13,14 @@ from lnbits.decorators import (
 from .crud import (
     create_keysend_entry,
     delete_keysend_entry,
-    delete_keysend_settings,
     get_keysend_entry,
     get_keysend_entry_by_username,
     get_keysend_entries,
-    get_or_create_keysend_settings,
     update_keysend_entry,
-    update_keysend_settings,
 )
 from .models import (
     CreateKeysendEntryData,
     KeysendEntry,
-    KeysendSettings,
     PublicKeysendEntry,
     SendKeysendData,
 )
@@ -193,31 +188,6 @@ async def api_entry_delete(
 
     await delete_keysend_entry(entry_id)
     return SimpleStatus(success=True, message="Deleted keysend entry.")
-
-
-# ---------------------------------------------------------------------------
-# Settings
-# ---------------------------------------------------------------------------
-
-
-@keysend_api_router.get("/api/v1/settings", dependencies=[Depends(check_admin)])
-async def api_get_or_create_settings() -> KeysendSettings:
-    return await get_or_create_keysend_settings()
-
-
-@keysend_api_router.put("/api/v1/settings", dependencies=[Depends(check_admin)])
-async def api_update_settings(data: KeysendSettings) -> KeysendSettings:
-    if not data.node_pubkey or len(data.node_pubkey) != 66:
-        raise HTTPException(
-            detail="Invalid node pubkey. Must be a 66-character hex string.",
-            status_code=HTTPStatus.BAD_REQUEST,
-        )
-    return await update_keysend_settings(data)
-
-
-@keysend_api_router.delete("/api/v1/settings", dependencies=[Depends(check_admin)])
-async def api_delete_settings() -> None:
-    await delete_keysend_settings()
 
 
 # ---------------------------------------------------------------------------

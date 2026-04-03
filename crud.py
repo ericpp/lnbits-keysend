@@ -3,34 +3,9 @@ from datetime import datetime, timezone
 from lnbits.db import Database
 from lnbits.helpers import urlsafe_short_hash
 
-from .models import CreateKeysendEntryData, KeysendEntry, KeysendSettings
+from .models import CreateKeysendEntryData, KeysendEntry
 
 db = Database("ext_keysend")
-
-
-# ---------------------------------------------------------------------------
-# Settings
-# ---------------------------------------------------------------------------
-
-
-async def get_or_create_keysend_settings() -> KeysendSettings:
-    settings = await db.fetchone(
-        "SELECT * FROM keysend.settings LIMIT 1", model=KeysendSettings
-    )
-    if settings:
-        return settings
-    settings = KeysendSettings(node_pubkey="")
-    await db.insert("keysend.settings", settings)
-    return settings
-
-
-async def update_keysend_settings(settings: KeysendSettings) -> KeysendSettings:
-    await db.update("keysend.settings", settings, "")
-    return settings
-
-
-async def delete_keysend_settings() -> None:
-    await db.execute("DELETE FROM keysend.settings")
 
 
 # ---------------------------------------------------------------------------

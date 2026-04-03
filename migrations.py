@@ -21,9 +21,3 @@ async def m001_initial(db: Connection):
             updated_at TIMESTAMP DEFAULT {db.timestamp_column_default}
         );
     """)
-
-    await db.execute("""
-        CREATE TABLE keysend.settings (
-            node_pubkey TEXT NOT NULL
-        );
-    """)

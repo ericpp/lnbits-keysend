@@ -3,20 +3,10 @@ window.PageKeysend = {
   computed: {
     baseUrl() {
       return window.location.origin + '/keysend/api/v1/entries'
-    },
-    endpoint() {
-      return `/keysend/api/v1/settings?usr=${this.g.user.id}`
     }
   },
   data() {
     return {
-      settings: [
-        {
-          type: 'str',
-          description: 'Lightning node public key (66-char hex)',
-          name: 'node_pubkey'
-        }
-      ],
       domain: window.location.host,
       entries: [],
       entriesTable: {

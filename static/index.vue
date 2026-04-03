@@ -13,11 +13,6 @@
             @click="openSendDialog()"
             >Send keysend</q-btn
           >
-          <lnbits-extension-settings-btn-dialog
-            v-if="g.user.admin"
-            :endpoint="endpoint"
-            :options="settings"
-          />
         </q-card-section>
       </q-card>
 
